@@ -27,19 +27,46 @@ def ask(question: str) -> str:
 
     # TODO(第1回 演習): response.usage_metadata から
     #   入力トークン数と出力トークン数を表示してみよう（Copilotに頼んでよい）
+    usage = response.usage_metadata
+
+    if usage is not None:
+        print(f"[入力トークン数] {usage.prompt_token_count}")
+        print(f"[出力トークン数] {usage.candidates_token_count}")
+    else:
+        print("[トークン数] 使用量情報がありません")
 
     return response.text
 
+def chat() -> None:
+    client = genai.Client(api_key=get_api_key())
+    session = client.chats.create(model=MODEL)
+
+    question = input("[質問]")
+
+    while question.strip().lower() not in {"", "exit", "quit"}:
+        response = session.send_message(question)
+        print(f"\n[回答]\n{response.text}")
+
+        question = input("\n[質問]")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="素のLLMに質問する")
     parser.add_argument("question", nargs="?", default=DEFAULT_QUESTION)
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="会話履歴を保持して続けて質問する",
+    )
     args = parser.parse_args()
 
     print(f"[model] {MODEL}")
-    print(f"[質問] {args.question}\n")
+
     try:
-        print(ask(args.question))
+        if args.chat:
+            chat()
+        else:
+            print(f"[質問] {args.question}\n")
+            print(ask(args.question))
     except errors.APIError as e:
         print(api_error_message(e.code, e.message))
         raise SystemExit(1)
