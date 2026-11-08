@@ -7,9 +7,40 @@
 import json
 from functools import cache
 from pathlib import Path
+from uuid import uuid4
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MAX_RESULTS = 3
+LEARNING_LOG_DIR = Path(__file__).resolve().parent.parent / "learning_log"
+
+
+def make_quiz(lecture: int) -> str:
+    """指定した回の復習や理解度確認のため、用語の問題と答えを1問返す。
+
+    lecture は講義の回（1始まり）。用語集の該当する最初の用語を使う。
+    """
+    entry = next((e for e in load_glossary() if e["lecture"] == lecture), None)
+    if entry is None:
+        return f"第{lecture}回の用語が見つからないため、問題を作れませんでした。"
+    return json.dumps(
+        {"lecture": lecture, "question": f"「{entry['term']}」の意味は？", "answer": entry["definition"]},
+        ensure_ascii=False,
+    )
+
+
+def save_learning_log(content: str) -> str:
+    """利用者が保存を求めたとき、学んだ内容を learning_log/ に新規保存する。
+
+    content は保存する学習メモの本文。実行前に利用者の承認が必要。
+    保存先のパスは指定せず、既存の記録は上書きしない。
+    """
+    if not content.strip():
+        return "本文が空なので保存しませんでした。"
+    LEARNING_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    path = LEARNING_LOG_DIR / f"{uuid4().hex}.md"
+    with path.open("x", encoding="utf-8") as file:
+        file.write(content.strip() + "\n")
+    return f"学習記録を learning_log/{path.name} に保存しました。"
 
 
 @cache
@@ -77,3 +108,4 @@ def get_lecture_summary(lecture: int) -> str:
         available = sorted(p.stem for p in (DATA_DIR / "lectures").glob("*.md"))
         return f"第{lecture}回の要点はまだありません。用意されている回: {', '.join(available)}"
     return path.read_text(encoding="utf-8")
+

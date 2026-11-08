@@ -18,7 +18,8 @@ def _parts(result, kind):
 
 
 def test_base_tools_are_registered_and_called():
-    model = TestModel()
+    # 読み取りツールの配線を確認。保存と承認は test_learning_log.py で別に検証する。
+    model = TestModel(call_tools=sorted(BASE_TOOLS))
     with agent.override(model=model):
         result = agent.run_sync("LoRAとは？")
 
@@ -37,3 +38,12 @@ def test_glossary_result_reaches_the_model():
         result = agent.run_sync("RAGとは？")
     returns = _parts(result, ToolReturnPart)
     assert returns and returns[0].tool_name == "search_glossary"
+
+
+def test_quiz_tool_is_registered_and_called():
+    result = agent.run_sync("確認問題を出して", model=TestModel(call_tools=["make_quiz"]))
+    returns = _parts(result, ToolReturnPart)
+    assert len(returns) == 1
+    assert returns[0].tool_name == "make_quiz"
+    assert isinstance(result.output, str)
+
