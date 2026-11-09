@@ -7,6 +7,8 @@ TestModel は実際のLLMを呼ばない偽モデルで、登録されたツー�
 
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
 from pydantic_ai.models.test import TestModel
+from pydantic_ai import DeferredToolRequests, DeferredToolResults
+from app import tools
 
 from app.agent import agent
 
@@ -18,7 +20,7 @@ def _parts(result, kind):
 
 
 def test_base_tools_are_registered_and_called():
-    model = TestModel()
+    model = TestModel(call_tools=sorted(BASE_TOOLS))
     with agent.override(model=model):
         result = agent.run_sync("LoRAとは？")
 
@@ -37,3 +39,46 @@ def test_glossary_result_reaches_the_model():
         result = agent.run_sync("RAGとは？")
     returns = _parts(result, ToolReturnPart)
     assert returns and returns[0].tool_name == "search_glossary"
+
+def test_approved_save_creates_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(tools, "DATA_DIR", tmp_path / "data")
+    model = TestModel(call_tools=["save_learning_log"])
+
+    pending = agent.run_sync("学習内容を保存して", model=model)
+    assert isinstance(pending.output, DeferredToolRequests)
+    call = pending.output.approvals[0]
+
+    agent.run_sync(
+        None,
+        model=model,
+        message_history=pending.all_messages(),
+        deferred_tool_results=DeferredToolResults(
+            approvals={call.tool_call_id: True}
+        ),
+    )
+
+    files = list((tmp_path / "learning_log").glob("*.md"))
+    assert len(files) == 1
+    assert files[0].read_text(encoding="utf-8") == (
+        call.args_as_dict()["content"].strip() + "\n"
+    )
+
+
+def test_denied_save_creates_no_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(tools, "DATA_DIR", tmp_path / "data")
+    model = TestModel(call_tools=["save_learning_log"])
+
+    pending = agent.run_sync("学習内容を保存して", model=model)
+    assert isinstance(pending.output, DeferredToolRequests)
+    call = pending.output.approvals[0]
+
+    agent.run_sync(
+        None,
+        model=model,
+        message_history=pending.all_messages(),
+        deferred_tool_results=DeferredToolResults(
+            approvals={call.tool_call_id: False}
+        ),
+    )
+
+    assert not (tmp_path / "learning_log").exists()
